@@ -969,26 +969,34 @@ class Image {
 
 		assert('$positive_tag_id_array || $negative_tag_id_array');
 		$wheres = array();
+		$binds = array();
 		if (!empty($positive_tag_id_array)) {
 			$positive_tag_id_list = join(', ', $positive_tag_id_array);
-			$wheres[] = "tag_id IN ($positive_tag_id_list)";
+			$wheres[] = "images.id IN (
+					SELECT image_id
+					FROM image_tags
+					WHERE tag_id IN ($positive_tag_id_list)
+					GROUP BY image_id
+					HAVING COUNT(image_id) >= :search_score
+				)
+			";
+			$binds["search_score"] = count($positive_tag_id_array);
 		}
 		if (!empty($negative_tag_id_array)) {
 			$negative_tag_id_list = join(', ', $negative_tag_id_array);
-			$wheres[] = "tag_id NOT IN ($negative_tag_id_list)";
+			$wheres[] = "images.id NOT IN (
+					SELECT image_id
+					FROM image_tags
+					WHERE tag_id IN ($negative_tag_id_list)
+				)
+			";
 		}
 		$wheres_str = join(" AND ", $wheres);
 		return new Querylet("
 			SELECT images.*
 			FROM images
-			WHERE images.id IN (
-				SELECT image_id
-				FROM image_tags
-				WHERE $wheres_str
-				GROUP BY image_id
-				HAVING COUNT(image_id) >= :search_score
-			)
-		", array("search_score"=>count($positive_tag_id_array)));
+			WHERE $wheres_str
+		", $binds);
 	}
 
 	/**
