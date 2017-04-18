@@ -23,6 +23,18 @@
 * Classes                                                                   *
 \* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
+class ImageRetrievalEvent extends Event {
+	public $search_terms;
+
+	public function __construct($terms=array()) {
+		$this->search_terms = $terms;
+	}
+
+	public function add_term($term) {
+		$this->search_terms[] = $term;
+	}
+}
+
 /**
  * Class Image
  *
@@ -105,7 +117,17 @@ class Image {
 	public static function by_id(/*int*/ $id) {
 		assert('is_numeric($id)');
 		global $database;
-		$row = $database->get_row("SELECT * FROM images WHERE images.id=:id", array("id"=>$id));
+
+		$ire = new ImageRetrievalEvent();
+		send_event($ire);
+
+		$querylet = new Querylet("SELECT * FROM images WHERE images.id=:id", array("id"=>$id));
+
+		if(count($ire->search_terms) > 0) {
+			Image::append_search_querylet($querylet, $ire->search_terms);
+		}
+
+		$row = $database->get_row($querylet->sql, $querylet->variables);
 		return ($row ? new Image($row) : null);
 	}
 
@@ -118,7 +140,17 @@ class Image {
 	public static function by_hash(/*string*/ $hash) {
 		assert('is_string($hash)');
 		global $database;
-		$row = $database->get_row("SELECT images.* FROM images WHERE hash=:hash", array("hash"=>$hash));
+
+		$ire = new ImageRetrievalEvent();
+		send_event($ire);
+
+		$querylet = new Querylet("SELECT * FROM images WHERE images.hash=:hash", array("hash"=>$hash));
+
+		if(count($ire->search_terms) > 0) {
+			Image::append_search_querylet($querylet, $ire->search_terms);
+		}
+
+		$row = $database->get_row($querylet->sql, $querylet->variables);
 		return ($row ? new Image($row) : null);
 	}
 
@@ -813,6 +845,10 @@ class Image {
 			}
 		}
 
+		$ire = new ImageRetrievalEvent($terms);
+		send_event($ire);
+		$terms = $ire->search_terms;
+
 		foreach ($terms as $term) {
 			$positive = true;
 			if (is_string($term) && !empty($term) && ($term[0] == '-')) {
@@ -1062,6 +1098,14 @@ class Image {
 			) AS images
 			WHERE 1=1
 		", $binds);
+	}
+
+	private static function append_search_querylet($querylet, $terms) {
+		$search_querylet = Image::build_search_querylet($terms);
+
+		$querylet->append_sql(" AND images.id IN (SELECT images.id FROM (");
+		$querylet->append($search_querylet);
+		$querylet->append_sql(") AS T)");
 	}
 }
 
