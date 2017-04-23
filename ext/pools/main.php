@@ -727,7 +727,9 @@ class Pools extends Extension {
 
 		$images = array();
 		foreach($result as $singleResult) {
-			$images[] = Image::by_id($singleResult["image_id"]);
+			$image = Image::by_id($singleResult["image_id"]);
+			if($image)
+				$images[] = $image;
 		}
 
 		$this->theme->view_pool($pool, $images, $pageNumber + 1, $totalPages);
@@ -747,7 +749,8 @@ class Pools extends Extension {
 		
 		while($row = $result->fetch()) {
 			$image = Image::by_id($row["image_id"]);
-			$images[] = array($image);
+			if($image)
+				$images[] = array($image);
 		}
 		
 		return $images;
