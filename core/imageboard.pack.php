@@ -967,7 +967,15 @@ class Image {
 			}
 		}
 
-		assert('$positive_tag_id_array || $negative_tag_id_array');
+		if(!$positive_tag_id_array && !$negative_tag_id_array) {
+			// No positive tags, and no negative tags that actually exist;
+			// return everything
+			return new Querylet("
+				SELECT images.*
+				FROM images
+				WHERE 1=1
+			");
+		}
 		$wheres = array();
 		$binds = array();
 		if (!empty($positive_tag_id_array)) {
