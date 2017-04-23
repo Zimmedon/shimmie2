@@ -1103,7 +1103,7 @@ class Image {
 	private static function append_search_querylet($querylet, $terms) {
 		$search_querylet = Image::build_search_querylet($terms);
 
-		$querylet->append_sql(" AND images.id IN (SELECT images.id FROM (");
+		$querylet->append_sql(" AND images.id IN (SELECT T.id FROM (");
 		$querylet->append($search_querylet);
 		$querylet->append_sql(") AS T)");
 	}
