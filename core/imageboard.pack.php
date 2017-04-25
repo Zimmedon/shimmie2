@@ -884,10 +884,53 @@ class Image {
 
 		// more than one positive tag, or more than zero negative tags
 		else {
-			if($database->get_driver_name() === "mysql")
-				$query = Image::build_ugly_search_querylet($tag_querylets);
-			else
-				$query = Image::build_accurate_search_querylet($tag_querylets);
+			$positive_tag_id_array = array();
+			$negative_tag_id_array = array();
+
+			$fail = false;
+			foreach ($tag_querylets as $tq) {
+				$tag_ids = $database->get_col(
+					$database->scoreql_to_sql("
+						SELECT id
+						FROM tags
+						WHERE SCORE_STRNORM(tag) LIKE SCORE_STRNORM(:tag)
+					"),
+					array("tag" => $tq->tag)
+				);
+				if ($tq->positive) {
+					$positive_tag_id_array = array_merge($positive_tag_id_array, $tag_ids);
+					if (count($tag_ids) == 0) {
+						# one of the positive tags had zero results, therefor there
+						# can be no results; "where 1=0" should shortcut things
+						$query = new Querylet("
+							SELECT images.*
+							FROM images
+							WHERE 1=0
+						");
+						$fail = true;
+						break;
+					}
+				} else {
+					$negative_tag_id_array = array_merge($negative_tag_id_array, $tag_ids);
+				}
+			}
+
+			if(!$fail) {
+				if($positive_tag_id_array || $negative_tag_id_array) {
+					if($database->get_driver_name() === "mysql")
+						$query = Image::build_ugly_search_querylet($positive_tag_id_array, $negative_tag_id_array);
+					else
+						$query = Image::build_accurate_search_querylet($positive_tag_id_array, $negative_tag_id_array);
+				} else {
+					// No positive tags, and no negative tags that actually exist;
+					// return everything
+					$query = new Querylet("
+						SELECT images.*
+						FROM images
+						WHERE 1=1
+					");
+				}
+			}
 		}
 
 		/*
@@ -935,37 +978,7 @@ class Image {
 	 * @param TagQuerylet[] $tag_querylets
 	 * @return Querylet
 	 */
-	private static function build_accurate_search_querylet($tag_querylets) {
-		global $database;
-
-		$positive_tag_id_array = array();
-		$negative_tag_id_array = array();
-
-		foreach ($tag_querylets as $tq) {
-			$tag_ids = $database->get_col(
-				$database->scoreql_to_sql("
-					SELECT id
-					FROM tags
-					WHERE SCORE_STRNORM(tag) LIKE SCORE_STRNORM(:tag)
-				"),
-				array("tag" => $tq->tag)
-			);
-			if ($tq->positive) {
-				$positive_tag_id_array = array_merge($positive_tag_id_array, $tag_ids);
-				if (count($tag_ids) == 0) {
-					# one of the positive tags had zero results, therefor there
-					# can be no results; "where 1=0" should shortcut things
-					return new Querylet("
-						SELECT images.*
-						FROM images
-						WHERE 1=0
-					");
-				}
-			} else {
-				$negative_tag_id_array = array_merge($negative_tag_id_array, $tag_ids);
-			}
-		}
-
+	private static function build_accurate_search_querylet($positive_tag_id_array, $negative_tag_id_array) {
 		if(!$positive_tag_id_array && !$negative_tag_id_array) {
 			// No positive tags, and no negative tags that actually exist;
 			// return everything
@@ -1013,47 +1026,7 @@ class Image {
 	 * @param TagQuerylet[] $tag_querylets
 	 * @return Querylet
 	 */
-	private static function build_ugly_search_querylet($tag_querylets) {
-		global $database;
-
-		$positive_tag_id_array = array();
-		$negative_tag_id_array = array();
-
-		foreach ($tag_querylets as $tq) {
-			$tag_ids = $database->get_col(
-				$database->scoreql_to_sql("
-					SELECT id
-					FROM tags
-					WHERE SCORE_STRNORM(tag) LIKE SCORE_STRNORM(:tag)
-				"),
-				array("tag" => $tq->tag)
-			);
-			if ($tq->positive) {
-				$positive_tag_id_array = array_merge($positive_tag_id_array, $tag_ids);
-				if (count($tag_ids) == 0) {
-					# one of the positive tags had zero results, therefor there
-					# can be no results; "where 1=0" should shortcut things
-					return new Querylet("
-						SELECT images.*
-						FROM images
-						WHERE 1=0
-					");
-				}
-			} else {
-				$negative_tag_id_array = array_merge($negative_tag_id_array, $tag_ids);
-			}
-		}
-
-		if(!$positive_tag_id_array && !$negative_tag_id_array) {
-			// No positive tags, and no negative tags that actually exist;
-			// return everything
-			return new Querylet("
-				SELECT images.*
-				FROM images
-				WHERE 1=1
-			");
-		}
-
+	private static function build_ugly_search_querylet($positive_tag_id_array, $negative_tag_id_array) {
 		$wheres = array();
 		$binds = array();
 		$having = '';
