@@ -975,7 +975,8 @@ class Image {
 	 *      All the subqueries are executed every time for every row in the
 	 *      images table. Yes, MySQL does suck this much.
 	 *
-	 * @param TagQuerylet[] $tag_querylets
+	 * @param string[] $positive_tag_id_array
+	 * @param string[] $negative_tag_id_array
 	 * @return Querylet
 	 */
 	private static function build_accurate_search_querylet($positive_tag_id_array, $negative_tag_id_array) {
@@ -1023,7 +1024,8 @@ class Image {
 	 * this function exists because mysql is a turd, see the docs for
 	 * build_accurate_search_querylet() for a full explanation
 	 *
-	 * @param TagQuerylet[] $tag_querylets
+	 * @param string[] $positive_tag_id_array
+	 * @param string[] $negative_tag_id_array
 	 * @return Querylet
 	 */
 	private static function build_ugly_search_querylet($positive_tag_id_array, $negative_tag_id_array) {
