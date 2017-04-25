@@ -33,7 +33,6 @@
  * other supported upload type.
  */
 class Image {
-	private static $tag_n = 0; // temp hack
 	public static $order_sql = null; // this feels ugly
 
 	/** @var null|int */
@@ -1017,36 +1016,10 @@ class Image {
 	private static function build_ugly_search_querylet($tag_querylets) {
 		global $database;
 
-		$positive_tag_count = 0;
-		foreach($tag_querylets as $tq) {
-			if($tq->positive) $positive_tag_count++;
-		}
+		$positive_tag_id_array = array();
+		$negative_tag_id_array = array();
 
-		// only negative tags - shortcut to fail
-		if($positive_tag_count == 0) {
-			// TODO: This isn't currently implemented.
-			// SEE: https://github.com/shish/shimmie2/issues/66
-			return new Querylet("
-				SELECT images.*
-				FROM images
-				WHERE 1=0
-			");
-		}
-
-		// merge all the tag querylets into one generic one
-		$sql = "0";
-		$terms = array();
-		foreach($tag_querylets as $tq) {
-			$sign = $tq->positive ? "+" : "-";
-			$sql .= ' '.$sign.' IF(SUM(tag LIKE :tag'.Image::$tag_n.'), 1, 0)';
-			$terms['tag'.Image::$tag_n] = $tq->tag;
-			Image::$tag_n++;
-		}
-		$tag_search = new Querylet($sql, $terms);
-
-		$tag_id_array = array();
-
-		foreach($tag_querylets as $tq) {
+		foreach ($tag_querylets as $tq) {
 			$tag_ids = $database->get_col(
 				$database->scoreql_to_sql("
 					SELECT id
@@ -1055,36 +1028,67 @@ class Image {
 				"),
 				array("tag" => $tq->tag)
 			);
-			$tag_id_array = array_merge($tag_id_array, $tag_ids);
-
-			if($tq->positive && count($tag_ids) == 0) {
-				# one of the positive tags had zero results, therefor there
-				# can be no results; "where 1=0" should shortcut things
-				return new Querylet("
-					SELECT images.*
-					FROM images
-					WHERE 1=0
-				");
+			if ($tq->positive) {
+				$positive_tag_id_array = array_merge($positive_tag_id_array, $tag_ids);
+				if (count($tag_ids) == 0) {
+					# one of the positive tags had zero results, therefor there
+					# can be no results; "where 1=0" should shortcut things
+					return new Querylet("
+						SELECT images.*
+						FROM images
+						WHERE 1=0
+					");
+				}
+			} else {
+				$negative_tag_id_array = array_merge($negative_tag_id_array, $tag_ids);
 			}
 		}
 
-		Image::$tag_n = 0;
-		return new Querylet('
+		if(!$positive_tag_id_array && !$negative_tag_id_array) {
+			// No positive tags, and no negative tags that actually exist;
+			// return everything
+			return new Querylet("
+				SELECT images.*
+				FROM images
+				WHERE 1=1
+			");
+		}
+
+		$wheres = array();
+		$binds = array();
+		$having = '';
+		if(!empty($positive_tag_id_array)) {
+			$positive_tag_id_list = join(', ', $positive_tag_id_array);
+			$wheres[] = "tags.id IN ($positive_tag_id_list)";
+			$having = 'HAVING COUNT(images.id) >= :score';
+			$binds['score'] = count($positive_tag_id_array);
+		}
+		if(!empty($negative_tag_id_array)) {
+			$negative_tag_id_list = join(', ', $negative_tag_id_array);
+			$wheres[] = "
+				NOT EXISTS (
+					SELECT 1
+					FROM image_tags
+					WHERE image_tags.image_id=images.id AND
+					image_tags.tag_id IN ($negative_tag_id_list)
+				)
+			";
+		}
+
+		$wheres_str = join(' AND ', $wheres);
+		return new Querylet("
 			SELECT *
 			FROM (
-				SELECT images.*, ('.$tag_search->sql.') AS score
+				SELECT images.*
 				FROM images
 				LEFT JOIN image_tags ON image_tags.image_id = images.id
 				JOIN tags ON image_tags.tag_id = tags.id
-				WHERE tags.id IN (' . join(', ', $tag_id_array) . ')
+				WHERE $wheres_str
 				GROUP BY images.id
-				HAVING score = :score
+				$having
 			) AS images
 			WHERE 1=1
-		', array_merge(
-			$tag_search->variables,
-			array("score"=>$positive_tag_count)
-		));
+		", $binds);
 	}
 }
 
