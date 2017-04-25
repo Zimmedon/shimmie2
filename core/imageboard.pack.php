@@ -274,7 +274,7 @@ class Image {
 			}
 			return $total;
 		}
-		else if($tag_count === 1 && !preg_match("/[:=><\*\?]/", $tags[0])) {
+		else if($tag_count === 1 && !preg_match("/[:=><\*\?]/", $tags[0]) && $tags[0][0] != '-') {
 			return $database->get_one(
 				$database->scoreql_to_sql("SELECT count FROM tags WHERE SCORE_STRNORM(tag) = SCORE_STRNORM(:tag)"),
 				array("tag"=>$tags[0]));
