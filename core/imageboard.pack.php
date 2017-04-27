@@ -847,7 +847,7 @@ class Image {
 
 		$ire = new ImageRetrievalEvent($terms);
 		send_event($ire);
-		$terms = $ire->search_terms;
+		$terms = array_unique($ire->search_terms);
 
 		foreach ($terms as $term) {
 			$positive = true;
